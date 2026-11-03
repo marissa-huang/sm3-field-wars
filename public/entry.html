@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM3 Field Wars · Host Entry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .wrap { max-width: 720px; }
+  .roundsum { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .roundsum select { max-width: 100%; }
+  .roundsum > div { min-width: 0; }
+  .roundsum h2 { font-size: 22px; margin: 2px 0 4px; }
+  .prog { height: 10px; background: var(--sand-light); border-radius: 99px; overflow: hidden; margin: 10px 0 4px; }
+  .prog i { display: block; height: 100%; background: var(--green); transition: width .3s; }
+  .search { width: 100%; font-size: 18px; padding: 12px 14px; }
+  .teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .teams button { justify-content: space-between; padding: 12px; font-size: 15px; text-align: left; }
+  .teams button.done { background: var(--green-tint); border-color: #B9D8D0; color: var(--green); }
+  .teams button.done::after { content: "✓"; }
+  .banner { background: #FFF6DD; border: 1px solid var(--gold); border-radius: 8px; padding: 10px 12px; font-weight: 600; margin-top: 10px; }
+  .me { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+  .me input { flex: 1; max-width: 220px; padding: 6px 8px; }
+  @media (max-width: 520px) {
+    .wrap { padding: 12px; }
+    .fld input { font-size: 20px; padding: 10px 0; }
+    .fld .fl { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="/common.js"></script>
+<script>
+const { esc } = SMT;
+const app = document.getElementById("app");
+let roundId = null;        // round this device is entering for
+let followed;              // organizer's current round when we last looked
+let formOpen = false;
+let showDone = false;
+
+SMT.gate(app, "Host entry", boot);
+
+function boot() {
+  app.innerHTML = `
+    <div class="topbar"><div class="brand">SM3 <span>· Host entry</span></div><div class="spacer"></div>
+      <span class="live-dot">Live</span><button class="link" onclick="SMT.logout()">Sign out</button></div>
+    <div class="wrap">
+      <div class="card" id="head"></div>
+      <div class="card" id="list" style="margin-top:14px">
+        <input class="search" id="q" placeholder="🔎  Search team name…" autocomplete="off">
+        <div class="row" style="margin-top:8px;justify-content:space-between">
+          <label class="check"><input type="checkbox" id="showDone"> Show teams already entered</label>
+          <div class="me">Your name <input id="me" placeholder="e.g. Alex"></div>
+        </div>
+        <div class="teams" id="teams"></div>
+      </div>
+      <div class="card" id="form" style="margin-top:14px;display:none"></div>
+    </div>`;
+  const me = document.getElementById("me");
+  me.value = SMT.store.get("smt-host") || "";
+  me.oninput = () => SMT.store.set("smt-host", me.value.trim());
+  const q = document.getElementById("q");
+  q.oninput = () => renderTeams(SMT.state);
+  q.onkeydown = (e) => {
+    if (e.key !== "Enter") return;
+    const first = document.querySelector("#teams button");
+    if (first) first.click();
+  };
+  document.getElementById("showDone").onchange = (e) => { showDone = e.target.checked; renderTeams(SMT.state); };
+  SMT.connect(render);
+}
+
+function currentRound(s) {
+  const live = s.rounds.filter((r) => r.status !== "draft");
+  // When the organizer opens a new round, every host device jumps to it automatically.
+  if (s.currentRoundId !== followed) {
+    if (followed !== undefined && s.currentRoundId) {
+      const cur = live.find((r) => r.id === s.currentRoundId);
+      if (cur) SMT.toast(`Now entering Round ${cur.number}: ${cur.title}`);
+    }
+    followed = s.currentRoundId;
+    roundId = null;
+  }
+  if (roundId && live.some((r) => r.id === roundId)) return live.find((r) => r.id === roundId);
+  const cur = live.find((r) => r.id === s.currentRoundId) || live.filter((r) => r.status === "open").pop() || live[live.length - 1];
+  roundId = cur ? cur.id : null;
+  return cur || null;
+}
+
+function render(s) {
+  const r = currentRound(s);
+  const head = document.getElementById("head");
+  if (!r) {
+    head.innerHTML = `<h2>No round is open yet</h2><div class="muted">This page updates automatically when the organizer opens a round.</div>`;
+    document.getElementById("list").style.display = "none";
+    return;
+  }
+  document.getElementById("list").style.display = formOpen ? "none" : "";
+  const active = s.teams.filter((t) => t.active);
+  const n = Object.keys(r.submissions).filter((id) => s.teams.some((t) => t.id === id)).length;
+  const live = s.rounds.filter((x) => x.status !== "draft");
+  const ev = r.events.map((e) => `${s.meta.events[e].icon} ${esc(s.meta.events[e].name)}`).join(" · ");
+  head.innerHTML = `
+    <div class="roundsum">
+      <div><div class="muted" style="font-weight:700">Round ${r.number}${r.tag ? " · " + esc(r.tag) : ""}</div>
+        <h2>${esc(r.title)}</h2>
+        <div><b>${esc(s.meta.modes[r.mode].name)}</b> · budget <b>${r.budget}</b>${r.mode === "capital" ? " · capital required" : ""}${r.events.includes("sabotage") ? " · sabotage pick required" : ""}${ev ? " · " + ev : ""}</div></div>
+      <select id="rsel">${live.map((x) => `<option value="${x.id}" ${x.id === r.id ? "selected" : ""}>Round ${x.number}: ${esc(x.title)} (${x.status})</option>`).join("")}</select>
+    </div>
+    <div class="prog"><i style="width:${active.length ? (n / active.length) * 100 : 0}%"></i></div>
+    <div class="muted"><b>${n}</b> of ${active.length} teams entered</div>
+    ${r.status !== "open" ? `<div class="banner">🔒 This round is locked. New entries are blocked until the organizer unlocks it.</div>` : ""}`;
+  document.getElementById("rsel").onchange = (e) => { roundId = e.target.value; closeForm(); render(SMT.state); };
+  renderTeams(s);
+}
+
+function renderTeams(s) {
+  const r = currentRound(s);
+  if (!r) return;
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const teams = s.teams
+    .filter((t) => t.active)
+    .filter((t) => !q || t.name.toLowerCase().includes(q))
+    .filter((t) => showDone || q || !r.submissions[t.id])
+    .sort((a, b) => (!!r.submissions[a.id] - !!r.submissions[b.id]) || a.name.localeCompare(b.name));
+  const box = document.getElementById("teams");
+  box.innerHTML = teams.length
+    ? teams.map((t) => `<button data-id="${t.id}" class="${r.submissions[t.id] ? "done" : ""}">${esc(t.name)}</button>`).join("")
+    : `<div class="muted">${q ? "No team matches that search." : "🎉 Every team has been entered for this round."}</div>`;
+  box.querySelectorAll("button").forEach((b) => (b.onclick = () => openForm(b.dataset.id)));
+}
+
+function openForm(teamId) {
+  const s = SMT.state;
+  const r = currentRound(s);
+  const team = s.teams.find((t) => t.id === teamId);
+  formOpen = true;
+  document.getElementById("list").style.display = "none";
+  const box = document.getElementById("form");
+  box.style.display = "";
+  SMT.allocForm(box, {
+    round: r, team, existing: r.submissions[teamId],
+    enteredBy: SMT.store.get("smt-host") || "",
+    onDone: closeForm, onCancel: closeForm,
+  });
+}
+
+function closeForm() {
+  formOpen = false;
+  document.getElementById("form").style.display = "none";
+  document.getElementById("form").innerHTML = "";
+  document.getElementById("list").style.display = "";
+  const q = document.getElementById("q");
+  q.value = "";
+  if (SMT.state) render(SMT.state);
+  q.focus();
+}
+</script>
+</body>
+</html>

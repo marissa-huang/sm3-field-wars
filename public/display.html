@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM3 Field Wars · Projector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  /* Projector: everything scales with the viewport so it reads from the back row. */
+  html, body { height: 100%; overflow: hidden; }
+  main { overflow-y: auto; scroll-behavior: smooth; }
+  body { font-size: 1.35vw; background: var(--paper); }
+  .bar { height: 6.2vh; background: var(--cardinal); color: #fff; display: flex; align-items: center; padding: 0 2.2vw; gap: 1.5vw; }
+  .bar .brand { font-family: var(--serif); font-weight: 700; font-size: 1.7vw; }
+  .bar .brand span { font-weight: 400; opacity: .75; }
+  .bar .sp { flex: 1; }
+  .bar .rnd { font-weight: 700; font-size: 1.4vw; opacity: .95; }
+  .stripe { height: .6vh; background: linear-gradient(90deg, var(--sand) 0 70%, var(--cardinal-dark) 70%); }
+  main { height: calc(100vh - 6.8vh); padding: 2.4vh 2.4vw; position: relative; }
+  .kicker { text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: var(--cardinal); font-size: 1.1vw; }
+  h1.big { font-size: 4.2vw; color: var(--ink); margin: .4vh 0 1vh; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 1vw; box-shadow: var(--shadow); padding: 1.6vh 1.4vw; }
+  .panel h2 { font-size: 1.5vw; margin-bottom: 1vh; color: var(--cardinal); }
+
+  /* lobby + standby */
+  .hero { height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 2vh; }
+  .hero h1 { font-size: 7vw; color: var(--cardinal); }
+  .hero .tag { font-size: 2vw; color: var(--muted); margin: 0; }
+  .rules3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4vw; width: 80vw; margin-top: 2vh; }
+  .rules3 .panel { text-align: left; }
+  .rules3 b { display: block; font-size: 2.2vw; font-family: var(--serif); color: var(--cardinal); margin-bottom: .5vh; }
+  .chips { display: flex; flex-wrap: wrap; gap: .6vw; justify-content: center; max-width: 86vw; }
+  .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: .5vh 1vw; font-weight: 600; font-size: 1.15vw; }
+  .chip.done { background: var(--green); border-color: var(--green); color: #fff; }
+  .chip.done::before { content: "✓ "; }
+
+  /* round view */
+  .roundgrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 2vw; height: 100%; }
+  .col { display: flex; flex-direction: column; gap: 1.8vh; min-height: 0; }
+  .mode { border-left: .5vw solid var(--cardinal); }
+  .mode .name { font-family: var(--serif); font-size: 2.2vw; font-weight: 700; }
+  .mode .rule { font-size: 1.45vw; margin-top: .4vh; }
+  .events { display: grid; gap: 1.2vh; }
+  .event { display: flex; gap: 1vw; align-items: center; background: var(--sand-light); border: 1px solid var(--sand); border-radius: 1vw; padding: 1.2vh 1.2vw; }
+  .event .ic { font-size: 3vw; line-height: 1; }
+  .event b { font-size: 1.6vw; display: block; font-family: var(--serif); }
+  .event span { font-size: 1.3vw; }
+  .fieldstrip { display: grid; grid-template-columns: repeat(5, 1fr); gap: .8vw; }
+  .fbox { background: #fff; border: 2px solid var(--line); border-radius: .8vw; text-align: center; padding: 1.2vh .4vw; }
+  .fbox .fn { font-weight: 700; font-size: 1.1vw; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .fbox .fv { font-family: var(--serif); font-size: 2.6vw; font-weight: 700; color: var(--cardinal); line-height: 1.1; }
+  .fbox .ft { font-size: 1vw; min-height: 1.4vw; }
+  .fbox.zero { background: #F1F1F1; }
+  .fbox.zero .fv { color: var(--muted); }
+  .fbox.hot { border-color: var(--gold); background: #FFF8E2; }
+  .budget { display: flex; align-items: baseline; gap: 1vw; }
+  .budget .n { font-family: var(--serif); font-size: 4.4vw; font-weight: 700; color: var(--cardinal); line-height: 1; }
+  .budget .u { font-size: 1.6vw; font-weight: 600; }
+  .timer { text-align: center; padding: 2vh 1vw; }
+  .timer .t { font-size: 10vw; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .timer.low .t { color: var(--cardinal-bright); }
+  .timer.zero .t { color: var(--cardinal); animation: blink 1s steps(2) infinite; }
+  .timer .lbl { font-size: 1.3vw; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .closed { text-align: center; padding: 3vh 1vw; font-family: var(--serif); font-size: 3vw; color: var(--cardinal); font-weight: 700; }
+  .prog .pb { height: 2.2vh; background: var(--sand-light); border-radius: 99px; overflow: hidden; margin: 1vh 0 1.4vh; }
+  .prog .pb i { display: block; height: 100%; background: var(--green); transition: width .4s; }
+  .prog .count { font-size: 2vw; font-weight: 700; }
+  .prog .chips { justify-content: flex-start; max-width: none; overflow: hidden; }
+  .prog .chip { font-size: 1vw; padding: .35vh .8vw; }
+
+  /* results */
+  .stand { overflow: hidden; }
+  table.big { width: 100%; border-collapse: collapse; font-size: 1.5vw; }
+  table.big th { white-space: nowrap; text-align: left; font-size: .72em; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: .3em .5em; border-bottom: 2px solid var(--line); }
+  table.big td { padding: .22em .5em; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  table.big .n { text-align: right; }
+  table.big .rk { font-weight: 900; color: var(--cardinal); width: 2.6em; }
+  table.big .tm { font-weight: 700; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.big tr.top1 td { background: #FFF5D6; }
+  table.big tr.top2 td, table.big tr.top3 td { background: var(--sand-light); }
+  table.big .pts { font-weight: 900; color: var(--cardinal); }
+  .facts { display: flex; gap: 1vw; flex-wrap: wrap; margin-top: 1vh; font-size: 1.15vw; }
+  .facts .f { background: var(--sand-light); border-radius: .6vw; padding: .6vh .9vw; }
+  .titleline { display: flex; align-items: baseline; gap: 1.4vw; }
+  .titleline h1 { font-size: 3vw; }
+  /* Results: round standings and overall leaderboard side by side, scrolling down together. */
+  .boards { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1.4vw; margin-top: 1.6vh; align-items: start; }
+  .boards table.big { font-size: 1.3vw; }
+  .boards table.big .tm { max-width: 17vw; }
+  .boards .overall { border-top: .5vh solid var(--gold); }
+  td.orank { font-weight: 700; color: var(--muted); }
+  .panel h2 .sub { font-family: var(--font); font-weight: 600; font-size: .7em; color: var(--muted); margin-left: .6vw; }
+
+  /* strategies */
+  .spot { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4vw; }
+  .spot .panel { border-top: .6vh solid var(--sand); }
+  .spot .panel.g1 { border-top-color: var(--gold); }
+  .spot .who { display: flex; justify-content: space-between; align-items: baseline; }
+  .spot .who b { font-family: var(--serif); font-size: 1.9vw; }
+  .spot .who .medal { font-size: 2.2vw; }
+  .alloc5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: .5vw; margin-top: 1vh; align-items: end; height: 13vh; }
+  .alloc5 div { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+  .alloc5 .b { width: 70%; background: var(--cardinal); border-radius: .3vw .3vw 0 0; min-height: 2px; }
+  .alloc5 .b.cap { background: var(--gold); }
+  .alloc5 .v { font-weight: 900; font-size: 1.5vw; }
+  .alloc5 .k { font-size: .9vw; color: var(--muted); }
+  td.heat { text-align: center; font-weight: 700; }
+  td.heat.cap { outline: .25vw solid var(--gold); outline-offset: -.25vw; }
+
+  /* leaderboard */
+  .podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 1.4vw; align-items: end; margin: 1.6vh 0 2vh; }
+  .pod { text-align: center; background: #fff; border: 1px solid var(--line); border-radius: 1vw; padding: 1.6vh 1vw; box-shadow: var(--shadow); }
+  .pod .m { font-size: 3.2vw; }
+  .pod .nm { font-family: var(--serif); font-weight: 700; font-size: 2vw; }
+  .pod .pt { font-size: 2.6vw; font-weight: 900; color: var(--cardinal); }
+  .pod.p1 { padding: 3vh 1vw; border: 2px solid var(--gold); background: #FFFBEE; }
+  .pod.p1 .nm { font-size: 2.6vw; }
+
+  .waiting { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 2vh; }
+  .waiting h1 { font-size: 4vw; color: var(--cardinal); }
+  .fs-btn { position: fixed; right: 1vw; bottom: 1vh; opacity: 0; transition: opacity .3s; font-size: 12px; }
+  body.mouse .fs-btn { opacity: .8; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="brand">SM3 <span>· Field Wars</span></div>
+  <div class="sp"></div>
+  <div class="rnd" id="barRound"></div>
+</div>
+<div class="stripe"></div>
+<main id="main"></main>
+<button class="fs-btn" onclick="document.documentElement.requestFullscreen && document.documentElement.requestFullscreen()">Full screen (F)</button>
+
+<script src="/common.js"></script>
+<script>
+const { esc } = SMT;
+const main = document.getElementById("main");
+const medal = (r) => (r === 1 ? "🥇" : r === 2 ? "🥈" : r === 3 ? "🥉" : "");
+
+function shownRound(s) {
+  const id = s.display.roundId || s.currentRoundId;
+  return s.rounds.find((r) => r.id === id) || null;
+}
+
+function roundLabel(s, r) {
+  return `Round ${r.number}${s.totalRounds ? ` of ${s.totalRounds}` : ""}${r.tag ? ` · ${esc(r.tag)}` : ""}`;
+}
+
+function teamName(s, id) {
+  const t = s.teams.find((x) => x.id === id);
+  return t ? t.name : "?";
+}
+
+/* ---------------- views ---------------- */
+
+function lobby(s) {
+  const teams = s.teams.filter((t) => t.active);
+  return `<div class="hero">
+    <div class="kicker">Stanford Mini Math Meet · ${esc(s.tournament.name)}</div>
+    <h1>Field Wars</h1>
+    <p class="tag">Split your soldiers. Win the fields. Beat every other team.</p>
+    <div class="rules3">
+      <div class="panel"><b>100 soldiers · 5 fields</b>Split your army across 5 fields. You can assign any number of soldiers to any field, but the total must be exactly 100 soldiers.</div>
+      <div class="panel"><b>Most soldiers wins</b>Teams will face off against other teams. For each field, the team with more soldiers on that field wins it (in ties, neither team wins the field). To win a matchup, a team must win a majority of the field points.</div>
+      <div class="panel"><b>Every team plays every other team</b>All teams face each other every round.<div style="margin-top:.8vh">Win the matchup: <b style="display:inline;font-size:inherit;font-family:inherit">+10 points</b> · Tie: +5 points · Lose: 0 points</div></div>
+    </div>
+    ${teams.length ? `<div class="kicker" style="margin-top:2vh">${teams.length} teams registered</div>
+      <div class="chips">${teams.map((t) => `<span class="chip">${esc(t.name)}</span>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+function fieldStrip(r) {
+  const known = SMT.knownFields(r);
+  return `<div class="fieldstrip">${known.map((k, i) => `
+    <div class="fbox ${k.value === 0 ? "zero" : ""} ${k.tags.some((t) => t.endsWith("×2")) ? "hot" : ""}">
+      <div class="fn">Field ${i + 1}</div>
+      <div class="fv">${k.maybe ? k.value + "<small style='font-size:.5em'>?</small>" : k.value}</div>
+      <div class="ft">${k.value === 1 ? "point" : "points"} ${esc(k.tags.join(" "))}</div>
+    </div>`).join("")}</div>`;
+}
+
+function roundView(s, r) {
+  const M = s.meta.modes[r.mode];
+  const active = s.teams.filter((t) => t.active || r.submitted.includes(t.id));
+  const done = new Set(r.submitted);
+  const pct = active.length ? (done.size / active.length) * 100 : 0;
+  const events = r.events.map((e) => {
+    const E = s.meta.events[e];
+    let extra = "";
+    if (e === "crown") extra = r.draws.crown ? ` The treasure is on <b style="display:inline">Field ${r.draws.crown}</b>!` : " Where it's buried is revealed after the round.";
+    return `<div class="event"><div class="ic">${E.icon}</div><div><b>${esc(E.name)}</b><span>${esc(E.text)}${extra}</span></div></div>`;
+  }).join("");
+  const timerOrClosed = r.status === "open"
+    ? `<div class="panel timer" id="timer"><div class="lbl">Time remaining</div><div class="t" id="timerText">${SMT.clock(SMT.timeLeft(r.timer))}</div></div>`
+    : `<div class="panel closed">⏸ Allocations are closed.<div style="font-size:1.4vw;color:var(--muted);font-family:var(--font);font-weight:600;margin-top:1vh">Results coming up…</div></div>`;
+  return `<div class="roundgrid">
+    <div class="col">
+      <div><div class="kicker">${roundLabel(s, r)}</div><h1 class="big">${esc(r.title)}</h1></div>
+      <div class="panel mode"><div class="name">${esc(M.name)} mode</div><div class="rule">${esc(M.rule)}</div></div>
+      ${events ? `<div class="events">${events}</div>` : ""}
+      ${fieldStrip(r)}
+      ${r.notes ? `<div class="panel" style="font-size:1.3vw">📣 ${esc(r.notes)}</div>` : ""}
+    </div>
+    <div class="col">
+      <div class="panel budget"><span class="n">${r.budget}</span><span class="u">soldiers to place${r.mode === "capital" ? " + pick 1 capital" : ""}${r.events.includes("sabotage") ? " + pick 1 field to sabotage" : ""}</span></div>
+      ${timerOrClosed}
+      <div class="panel prog" style="flex:1;min-height:0">
+        <div class="count">${done.size} / ${active.length} teams submitted</div>
+        <div class="pb"><i style="width:${pct}%"></i></div>
+        <div class="chips">${active.map((t) => `<span class="chip ${done.has(t.id) ? "done" : ""}">${esc(t.name)}</span>`).join("")}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function notYet(s, r, what) {
+  return `<div class="waiting"><div class="kicker">${r ? roundLabel(s, r) : ""}</div>
+    <h1>${esc(r ? r.title : "Stand by")}</h1><div style="font-size:2vw;color:var(--muted)">${what}</div></div>`;
+}
+
+function resultsView(s, r) {
+  if (!r || !r.revealed) return notYet(s, r, "Results will be revealed soon.");
+  const R = r.results;
+  const ov = Object.fromEntries(s.overall.map((o) => [o.teamId, o]));
+  const thisRound = Object.fromEntries(R.standings.map((x) => [x.teamId, x]));
+  const played = s.rounds.filter((x) => x.revealed).length;
+  const facts = [];
+  facts.push(`<span class="f">${R.participants} teams played · ${R.participants * (R.participants - 1) / 2} matchups</span>`);
+  if (r.draws.volcano) facts.push(`<span class="f">🌋 Field ${r.draws.volcano} erupted — worth 0</span>`);
+  if (r.draws.crown) facts.push(`<span class="f">💎 The treasure was on Field ${r.draws.crown} (×2)</span>`);
+  if (r.draws.thaw) facts.push(`<span class="f">🔥 Field ${r.draws.thaw} thawed (×2) · 🧊 Field 3 worth 0</span>`);
+  if (r.events.includes("teleport")) facts.push(`<span class="f">🌀 Every team had two fields swapped before battle</span>`);
+  if (r.events.includes("underdog")) facts.push(`<span class="f">🐭 ${R.underdogCaptures} underdog capture${R.underdogCaptures === 1 ? "" : "s"} (+2 each)</span>`);
+  if (r.events.includes("exact")) facts.push(`<span class="f">🎯 ${R.exactWins} field${R.exactWins === 1 ? "" : "s"} won by exactly 1 (+1 each)</span>`);
+  if (r.events.includes("sabotage")) {
+    const sc = Object.entries(R.sabotageCounts || {}).sort((a, b) => b[1] - a[1]).map(([f, c]) => `F${f}: ${c}`).join(" · ");
+    if (sc) facts.push(`<span class="f">💣 Fields sabotaged: ${sc}</span>`);
+  }
+  if (R.unstableFields.length) facts.push(`<span class="f">⛰️ Most crowded: Field ${R.unstableFields.join(" & ")} (×2)</span>`);
+  if (r.mode === "capital") {
+    const cc = Object.entries(R.capitalCounts).sort((a, b) => b[1] - a[1]).map(([f, c]) => `F${f}: ${c}`).join(" · ");
+    if (cc) facts.push(`<span class="f">🏰 Capitals chosen — ${cc}</span>`);
+  }
+  return `<div class="titleline"><div class="kicker">${roundLabel(s, r)} · Round results</div><h1>${esc(r.title)}</h1></div>
+    <div class="facts">${facts.join("")}</div>
+    <div class="panel" style="margin-top:1.6vh"><h2>Soldiers per field this round${r.events.includes("teleport") ? ` <span class="sub">after teleporting</span>` : ""}</h2>
+      <div style="max-width:70vw;margin:0 auto">${SMT.fieldChart(R.stats, { values: R.values, notes: R.notes, width: 1000, height: 330, fontSize: 17 })}</div></div>
+    <div class="boards">
+      <div class="panel">
+        <h2>Round ${r.number} standings <span class="sub">points earned this round</span></h2>
+        <table class="big"><thead><tr><th>Round rank</th><th>Team</th><th class="n">W</th><th class="n">T</th><th class="n">L</th><th class="n">Round pts</th><th class="n">Overall</th></tr></thead>
+        <tbody>${R.standings.map((x) => {
+          const o = ov[x.teamId];
+          return `<tr class="top${x.rank}"><td class="rk">${medal(x.rank) || x.rank}</td>
+          <td class="tm">${esc(x.name)}${x.capitalLosses ? ` <small title="capital captured">🏰×${x.capitalLosses}</small>` : ""}</td>
+          <td class="n w">${x.wins}</td><td class="n tie">${x.ties}</td><td class="n l">${x.losses}</td><td class="n pts">${x.points}</td>
+          <td class="n orank">${o ? "#" + o.rank : "–"}</td></tr>`;
+        }).join("")}</tbody></table>
+        <div class="muted" style="margin-top:1vh">Beat a team: +10 · tie: +5 · lose: 0</div>
+      </div>
+      <div class="panel overall">
+        <h2>🏆 Overall leaderboard <span class="sub">after ${played} round${played === 1 ? "" : "s"}</span></h2>
+        <table class="big"><thead><tr><th>Overall rank</th><th>Team</th><th class="n">This round</th><th class="n">Total pts</th></tr></thead>
+        <tbody>${s.overall.map((o) => {
+          const x = thisRound[o.teamId];
+          return `<tr class="top${o.rank}"><td class="rk">${medal(o.rank) || o.rank}</td><td class="tm">${esc(o.name)}</td>
+          <td class="n">${x ? "+" + x.points : "–"}</td><td class="n pts">${o.points}</td></tr>`;
+        }).join("")}</tbody></table>
+      </div>
+    </div>`;
+}
+
+function strategiesView(s, r) {
+  if (!r || !r.strategiesRevealed) return notYet(s, r, "Strategies are still secret.");
+  const R = r.results;
+  // Show what actually fought: Random Teleportation swaps two fields after submission.
+  const A = Object.fromEntries(Object.entries(r.allocations).map(([id, a]) => [id, { ...a, alloc: SMT.teleported(a.alloc, a.swap) }]));
+  const hasSab = r.events.includes("sabotage"), hasTp = r.events.includes("teleport");
+  const swapTxt = (a) => (a.swap ? `F${a.swap[0]}⇄F${a.swap[1]}` : "–");
+  const top = R.standings.slice(0, 3);
+  const maxV = Math.max(1, ...Object.values(A).flatMap((a) => a.alloc));
+  const spot = top.map((x) => {
+    const a = A[x.teamId];
+    if (!a) return "";
+    return `<div class="panel g${x.rank}"><div class="who"><b>${esc(x.name)}</b><span class="medal">${medal(x.rank)}</span></div>
+      <div class="muted" style="font-size:1.1vw">Round rank ${x.rank} · ${x.points} pts · ${x.wins}W ${x.ties}T ${x.losses}L${hasSab && a.sabotage ? ` · 💣 F${a.sabotage}` : ""}${hasTp ? ` · 🌀 ${swapTxt(a)}` : ""}</div>
+      <div class="alloc5">${a.alloc.map((v, f) => `<div><span class="v">${v}</span>
+        <span class="b ${a.capital === f + 1 ? "cap" : ""}" style="height:${(v / maxV) * 70}%"></span>
+        <span class="k">F${f + 1}${a.capital === f + 1 ? " 🏰" : ""}</span></div>`).join("")}</div></div>`;
+  }).join("");
+  const heat = (v) => {
+    const a = v / maxV;
+    return `background:rgba(140,21,21,${(a * 0.85).toFixed(2)});color:${a > 0.45 ? "#fff" : "var(--ink)"}`;
+  };
+  return `<div class="titleline"><div class="kicker">${roundLabel(s, r)} · Strategies</div><h1>${esc(r.title)}</h1></div>
+    <div class="spot" style="margin-top:1.4vh">${spot}</div>
+    <div class="panel" style="margin-top:1.6vh">
+      <h2>Every team's allocation <span class="sub">sorted by round rank</span></h2>
+      <table class="big"><thead><tr><th>Round rank</th><th>Team</th>
+      ${[1, 2, 3, 4, 5].map((f) => `<th class="n" style="text-align:center">Field ${f}</th>`).join("")}${hasSab ? `<th class="n">💣 Sabotage</th>` : ""}${hasTp ? `<th class="n">🌀 Swapped</th>` : ""}<th class="n">Round pts</th></tr></thead>
+      <tbody>${R.standings.map((x) => {
+        const a = A[x.teamId];
+        return `<tr><td class="rk">${x.rank}</td><td class="tm">${esc(x.name)}</td>
+          ${a.alloc.map((v, f) => `<td class="heat ${a.capital === f + 1 ? "cap" : ""}" style="${heat(v)}">${v}</td>`).join("")}
+          ${hasSab ? `<td class="n">${a.sabotage ? "F" + a.sabotage : "–"}</td>` : ""}${hasTp ? `<td class="n">${swapTxt(a)}</td>` : ""}
+          <td class="n pts">${x.points}</td></tr>`;
+      }).join("")}</tbody></table>
+      ${r.mode === "capital" ? `<div class="muted" style="margin-top:.6vh">Outlined cell = capital</div>` : ""}
+      ${hasTp ? `<div class="muted" style="margin-top:.6vh">Numbers are after teleporting, i.e. what actually fought.</div>` : ""}
+    </div>`;
+}
+
+function leaderboardView(s) {
+  const rows = s.overall;
+  const played = s.rounds.filter((r) => r.revealed).length;
+  if (!played) return notYet(s, null, "The leaderboard appears after the first round is revealed.");
+  const pod = (x, cls) => x ? `<div class="pod ${cls}"><div class="m">${medal(x.rank)}</div><div class="nm">${esc(x.name)}</div><div class="pt">${x.points}</div><div class="muted">${x.wins}W · ${x.ties}T · ${x.losses}L</div></div>` : "<div></div>";
+  return `<div class="titleline"><div class="kicker">All rounds so far · ${played} revealed</div><h1>🏆 Overall Leaderboard</h1></div>
+    <div class="podium">${pod(rows[1], "p2")}${pod(rows[0], "p1")}${pod(rows[2], "p3")}</div>
+    <div class="panel"><h2>Overall standings <span class="sub">total points across every revealed round</span></h2>
+      <table class="big"><thead><tr><th>Overall rank</th><th>Team</th><th class="n">Won</th><th class="n">Tied</th><th class="n">Lost</th><th class="n">Last round</th><th class="n">Total pts</th></tr></thead>
+      <tbody>${rows.map((x) => `<tr class="top${x.rank}"><td class="rk">${medal(x.rank) || x.rank}</td><td class="tm">${esc(x.name)}</td><td class="n w">${x.wins}</td><td class="n tie">${x.ties}</td><td class="n l">${x.losses}</td><td class="n">${x.lastRoundPoints ?? "–"}</td><td class="n pts">${x.points}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function standby(s) {
+  return `<div class="hero"><div class="kicker">Stanford Mini Math Meet</div><h1>Field Wars</h1><p class="tag">${esc(s.tournament.name)} · back in a moment</p></div>`;
+}
+
+/* ---------------- render loop ---------------- */
+
+let lastKey = "";
+function render(s) {
+  const r = shownRound(s);
+  document.getElementById("barRound").innerHTML = r ? roundLabel(s, r) : esc(s.tournament.name);
+  const v = s.display.view;
+  let html;
+  if (v === "round") html = r ? roundView(s, r) : lobby(s);
+  else if (v === "results") html = resultsView(s, r);
+  else if (v === "strategies") html = strategiesView(s, r);
+  else if (v === "leaderboard") html = leaderboardView(s);
+  else if (v === "standby") html = standby(s);
+  else html = lobby(s);
+  const top = main.scrollTop;
+  main.innerHTML = html;
+  // Keep the operator's scroll position on live updates; jump to the top on a new screen.
+  const key = `${v}:${r && r.id}`;
+  main.scrollTop = key === lastKey ? top : 0;
+  lastKey = key;
+  tick();
+}
+
+function tick() {
+  const s = SMT.state;
+  const el = document.getElementById("timerText");
+  if (!s || !el) return;
+  const r = shownRound(s);
+  if (!r) return;
+  const left = SMT.timeLeft(r.timer);
+  el.textContent = SMT.clock(left);
+  const box = document.getElementById("timer");
+  box.classList.toggle("low", left > 0 && left <= 30);
+  box.classList.toggle("zero", left <= 0);
+  box.querySelector(".lbl").textContent = left <= 0 ? "Time's up — pencils down!" : r.timer.startedAt ? "Time remaining" : "Timer paused";
+}
+
+setInterval(tick, 250);
+window.addEventListener("resize", () => SMT.state && render(SMT.state));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f" || e.key === "F") document.documentElement.requestFullscreen?.();
+  // Space / arrows / Page keys scroll long tables even when focus is elsewhere.
+  const step = { ArrowDown: 0.25, ArrowUp: -0.25, PageDown: 0.8, PageUp: -0.8, " ": 0.8 }[e.key];
+  if (step) { e.preventDefault(); main.scrollBy(0, main.clientHeight * step); }
+});
+let mouseT;
+document.addEventListener("mousemove", () => { document.body.classList.add("mouse"); clearTimeout(mouseT); mouseT = setTimeout(() => document.body.classList.remove("mouse"), 2000); });
+SMT.connect(render, { publicOnly: true });
+</script>
+</body>
+</html>

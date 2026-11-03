@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM3 Field Wars · Organizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .projbar { background: var(--white); border-bottom: 1px solid var(--line); padding: 8px 18px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; position: sticky; top: 50px; z-index: 15; }
+  .projbar .lbl { font-weight: 700; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+  .projbar button { padding: 5px 10px; font-size: 13px; }
+  .tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+  .tabs button { border: 0; border-radius: 8px 8px 0 0; background: transparent; padding: 10px 16px; font-size: 15px; color: var(--muted); margin-bottom: -2px; border-bottom: 3px solid transparent; }
+  .tabs button.on { color: var(--cardinal); border-bottom-color: var(--cardinal); background: transparent; }
+  .livegrid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 14px; align-items: start; }
+  @media (max-width: 1000px) { .livegrid { grid-template-columns: 1fr; } }
+  .clock { font-size: 56px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+  .clock.low { color: var(--cardinal-bright); }
+  .preview { width: 100%; aspect-ratio: 16 / 9; position: relative; overflow: hidden; border-radius: 8px; border: 1px solid var(--line); background: var(--paper); }
+  .preview iframe { width: 1600px; height: 900px; border: 0; transform-origin: 0 0; position: absolute; top: 0; left: 0; pointer-events: none; }
+  .missing span { display: inline-block; background: var(--cardinal-tint); color: var(--cardinal); border-radius: 99px; padding: 2px 9px; margin: 2px; font-size: 13px; font-weight: 600; }
+  .bigstat { font-size: 30px; font-weight: 900; color: var(--cardinal); }
+  .matrix { overflow: auto; max-height: 520px; }
+  .matrix table { border-collapse: collapse; font-size: 12px; }
+  .matrix th, .matrix td { border: 1px solid var(--line); padding: 3px 5px; text-align: center; white-space: nowrap; }
+  .matrix th.rot { writing-mode: vertical-rl; transform: rotate(180deg); max-height: 120px; }
+  .matrix td.W { background: var(--green-tint); color: var(--green); font-weight: 700; }
+  .matrix td.L { background: var(--cardinal-tint); color: var(--cardinal); }
+  .matrix td.T { background: var(--sand-light); }
+  .evgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 600px) { .evgrid { grid-template-columns: 1fr; } }
+  .evgrid label { border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-grid .full { grid-column: 1 / -1; }
+  .draws { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .draws span { background: var(--sand-light); border-radius: 8px; padding: 4px 10px; font-size: 14px; }
+  .url { font-family: ui-monospace, Menlo, monospace; background: var(--sand-light); padding: 3px 8px; border-radius: 6px; font-size: 14px; user-select: all; }
+  td.bad { background: #FFF0F0; }
+  details > summary { cursor: pointer; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<dialog id="dlg"><div class="dlg-head"><span id="dlgTitle"></span><button onclick="dlg.close()" aria-label="Close">×</button></div><div class="dlg-body" id="dlgBody"></div></dialog>
+
+<script src="/common.js"></script>
+<script>
+const { esc } = SMT;
+const app = document.getElementById("app");
+const dlg = document.getElementById("dlg");
+let tab = SMT.store.get("smt-tab") || "live";
+let liveRoundId = null;
+let followed;              // follow the organizer's current round when it changes
+let matrixOpen = false;
+
+SMT.gate(app, "Organizer", boot);
+
+function boot() {
+  app.innerHTML = `
+    <div class="topbar"><div class="brand">SM3 <span>· Field Wars organizer</span></div>
+      <span id="tname" style="opacity:.85"></span><div class="spacer"></div>
+      <span class="live-dot">Live</span>
+      <a href="/display" target="_blank">Projector ↗</a><a href="/entry" target="_blank">Host entry ↗</a>
+      <button class="link" onclick="SMT.logout()">Sign out</button></div>
+    <div class="projbar" id="projbar"></div>
+    <div class="wrap">
+      <div class="tabs" id="tabs">
+        ${[["live", "▶ Live round"], ["rounds", "Rounds"], ["teams", "Teams"], ["standings", "Standings"], ["data", "Setup & data"]]
+          .map(([k, l]) => `<button data-tab="${k}">${l}</button>`).join("")}
+      </div>
+      <section data-pane="live"><div class="livegrid"><div id="live"></div>
+        <div><div class="card"><h3>What the projector shows right now</h3><div class="preview" id="pv"><iframe src="/display" title="Projector preview" tabindex="-1"></iframe></div>
+          <div class="muted" style="font-size:13px;margin-top:6px">Live preview of <a href="/display" target="_blank">/display</a>. The projector only gets what you reveal.</div></div>
+          <div class="card" id="liveSide"></div></div></div></section>
+      <section data-pane="rounds"><div id="rounds"></div></section>
+      <section data-pane="teams">
+        <div class="grid2">
+          <div class="card"><h2>Add teams</h2>
+            <textarea id="newTeams" rows="7" style="width:100%" placeholder="One team name per line&#10;Pythagorean Pirates&#10;The Primes&#10;..."></textarea>
+            <div class="row" style="margin-top:8px"><button class="primary" id="addTeams">Add teams</button>
+            <span class="muted" style="font-size:13px">You can add late teams at any time; they start with 0 points.</span></div></div>
+          <div id="teams"></div>
+        </div>
+      </section>
+      <section data-pane="standings"><div id="standings"></div></section>
+      <section data-pane="data"><div id="data"></div></section>
+    </div>`;
+  document.getElementById("tabs").onclick = (e) => {
+    const b = e.target.closest("[data-tab]");
+    if (b) { tab = b.dataset.tab; SMT.store.set("smt-tab", tab); render(SMT.state); }
+  };
+  document.getElementById("addTeams").onclick = async () => {
+    const ta = document.getElementById("newTeams");
+    const names = ta.value.split("\n").map((x) => x.trim()).filter(Boolean);
+    if (!names.length) return;
+    try {
+      const out = await SMT.act("team.add", { names });
+      ta.value = "";
+      SMT.toast(`Added ${out.added.length} team${out.added.length === 1 ? "" : "s"}` + (out.skipped.length ? ` · skipped duplicates: ${out.skipped.join(", ")}` : ""), "ok");
+    } catch (e) { SMT.toast(e.message, "err"); }
+  };
+  document.addEventListener("click", onAction);
+  const fit = () => { const pv = document.getElementById("pv"); pv.querySelector("iframe").style.transform = `scale(${pv.clientWidth / 1600})`; };
+  new ResizeObserver(fit).observe(document.getElementById("pv"));
+  setInterval(tickClock, 250);
+  SMT.connect(render);
+}
+
+/* Any element with data-act="<action>" posts that action; other data-* become the payload. */
+async function onAction(e) {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const { act, confirm: ask, ok, ...payload } = b.dataset;
+  if (payload.seconds) payload.seconds = Number(payload.seconds);
+  if (payload.value) payload.value = payload.value === "true";
+  if (ask && !confirm(ask)) return;
+  b.disabled = true;
+  try {
+    await SMT.act(act, payload);
+    if (ok) SMT.toast(ok, "ok");
+  } catch (err) { SMT.toast(err.message, "err"); }
+  b.disabled = false;
+}
+
+const pill = (r) => r.revealed ? `<span class="pill revealed">${r.strategiesRevealed ? "strategies shown" : "revealed"}</span>` : `<span class="pill ${r.status}">${r.status}</span>`;
+const modeName = (s, r) => s.meta.modes[r.mode].name;
+const evNames = (s, r) => r.events.map((e) => `${s.meta.events[e].icon} ${s.meta.events[e].name}`).join(", ");
+const teamName = (s, id) => (s.teams.find((t) => t.id === id) || {}).name || "(deleted)";
+
+function render(s) {
+  if (!s) return;
+  document.getElementById("tname").textContent = "· " + s.tournament.name;
+  document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === tab));
+  document.querySelectorAll("[data-pane]").forEach((p) => (p.style.display = p.dataset.pane === tab ? "" : "none"));
+  renderProjbar(s);
+  ({ live: renderLive, rounds: renderRounds, teams: renderTeams, standings: renderStandings, data: renderData })[tab](s);
+}
+
+/* ---------------- projector control ---------------- */
+function renderProjbar(s) {
+  const v = s.display.view;
+  const r = s.rounds.find((x) => x.id === (s.display.roundId || s.currentRoundId));
+  const views = [["lobby", "Welcome"], ["round", "Round & timer"], ["results", "Results"], ["strategies", "Strategies"], ["standby", "Stand by"]];
+  document.getElementById("projbar").innerHTML = `<span class="lbl">📽 Projector</span>
+    ${views.map(([k, l]) => `<button data-act="display" data-view="${k}" class="${v === k ? "on" : ""}">${l}</button>`).join("")}
+    <span class="muted" style="font-size:13px;margin-left:6px">${r ? `showing Round ${r.number}: ${esc(r.title)}` : "no round selected"}
+    ${r && (v === "results" && !r.revealed || v === "strategies" && !r.strategiesRevealed) ? ` · <b style="color:var(--cardinal)">not revealed yet, so the screen shows a holding message</b>` : ""}</span>`;
+}
+
+/* ---------------- live round ---------------- */
+function liveRound(s) {
+  const live = s.rounds.filter((r) => r.status !== "draft");
+  if (s.currentRoundId !== followed) { followed = s.currentRoundId; liveRoundId = null; }
+  return live.find((r) => r.id === liveRoundId) || live.find((r) => r.id === s.currentRoundId) || null;
+}
+
+function renderLive(s) {
+  const box = document.getElementById("live");
+  const side = document.getElementById("liveSide");
+  const r = liveRound(s);
+  const next = s.rounds.find((x) => x.status === "draft");
+  if (!r) {
+    box.innerHTML = `<div class="card"><h2>No round is running</h2>
+      ${!s.teams.length ? `<p>Start on the <a href="#" onclick="tab='teams';render(SMT.state);return false">Teams</a> tab: add the team names.</p>` : ""}
+      ${next ? `<p>Next up: <b>Round ${next.number}: ${esc(next.title)}</b></p><button class="primary big" data-act="round.open" data-id="${next.id}">▶ Open Round ${next.number}</button>`
+        : `<p>Create rounds on the <a href="#" onclick="tab='rounds';render(SMT.state);return false">Rounds</a> tab (there's a one-click suggested schedule).</p>`}</div>`;
+    side.innerHTML = "";
+    return;
+  }
+  liveRoundId = r.id;
+  const res = r.results;
+  const active = s.teams.filter((t) => t.active);
+  const subs = r.submissions;
+  const missing = active.filter((t) => !subs[t.id]);
+  const nextDraft = s.rounds.find((x) => x.status === "draft" && x.number > r.number);
+  const live = s.rounds.filter((x) => x.status !== "draft");
+  const byTeam = Object.fromEntries((res ? res.standings : []).map((x) => [x.teamId, x]));
+
+  const controls = [];
+  if (r.status === "open") controls.push(`<button data-act="round.lock" data-id="${r.id}" data-ok="Round locked">🔒 Lock entries</button>`);
+  else controls.push(`<button data-act="round.unlock" data-id="${r.id}" data-ok="Round reopened for entries">🔓 Unlock entries</button>`);
+  if (!r.revealed) controls.push(`<button class="primary" data-act="round.reveal" data-id="${r.id}" data-confirm="Reveal Round ${r.number} results on the projector? This also locks entries.${missing.length ? `\n\n${missing.length} team(s) have no entry and will sit this round out.` : ""}">📣 Reveal results</button>`);
+  if (!r.strategiesRevealed) controls.push(`<button data-act="round.strategies" data-id="${r.id}" data-value="true" data-confirm="Show every team's allocation for Round ${r.number} on the projector?">👁 Reveal strategies</button>`);
+  else controls.push(`<button data-act="round.strategies" data-id="${r.id}" data-value="false">🙈 Hide strategies</button>`);
+  if (r.revealed) controls.push(`<button class="ghost" data-act="round.hide" data-id="${r.id}">Un-reveal</button>`);
+  if (nextDraft) controls.push(`<button class="green" data-act="round.open" data-id="${nextDraft.id}" data-confirm="Open Round ${nextDraft.number}: ${esc(nextDraft.title)}? The projector switches to the new round.">▶ Next: open Round ${nextDraft.number}</button>`);
+
+  const draws = [];
+  if (r.events.includes("crown")) draws.push(`<span>💎 Hidden Treasure: <b>Field ${r.draws.crown}</b>${r.crownHidden && !r.revealed ? " (secret until reveal)" : " (announced)"} <button class="ghost" data-act="round.redraw" data-id="${r.id}" data-which="crown" data-confirm="Re-draw the treasure field?">re-draw</button></span>`);
+  if (r.events.includes("frozen")) draws.push(`<span>🧊 Frozen Fortress: Field 3 worth 0, <b>Field ${r.draws.thaw}</b> worth ×2${r.revealed ? "" : " (secret until reveal)"} <button class="ghost" data-act="round.redraw" data-id="${r.id}" data-which="thaw" data-confirm="Re-draw which neighbour of Field 3 is doubled?">re-draw</button></span>`);
+  if (r.events.includes("teleport")) draws.push(`<span>🌀 Teleport: each team's swap is drawn when its entry is saved (see the Swap column)</span>`);
+  if (r.events.includes("volcano")) draws.push(`<span>🌋 Volcano: <b>Field ${r.draws.volcano}</b>${r.revealed ? "" : " (secret until reveal)"} <button class="ghost" data-act="round.redraw" data-id="${r.id}" data-which="volcano" data-confirm="Re-draw the volcano field?">re-draw</button></span>`);
+  if (res && res.unstableFields.length) draws.push(`<span>⛰️ Unstable bonus currently on Field ${res.unstableFields.join(" & ")}</span>`);
+  if (res) draws.push(`<span>Field values: <b>${res.values.join(" · ")}</b></span>`);
+
+  const hasSab = r.events.includes("sabotage"), hasTp = r.events.includes("teleport");
+  const swaps = (hasTp && r.draws.teleport) || {};
+  const entries = Object.entries(subs).sort((a, b) => ((byTeam[a[0]] || {}).rank || 99) - ((byTeam[b[0]] || {}).rank || 99));
+  box.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><div class="muted" style="font-weight:700">Round ${r.number} of ${s.rounds.length}${r.tag ? " · " + esc(r.tag) : ""} ${pill(r)}</div>
+          <h2 style="margin:2px 0">${esc(r.title)}</h2>
+          <div class="muted">${modeName(s, r)} · budget ${r.budget}${r.events.length ? " · " + esc(evNames(s, r)) : ""}</div></div>
+        <select id="liveSel">${live.map((x) => `<option value="${x.id}" ${x.id === r.id ? "selected" : ""}>Round ${x.number}: ${esc(x.title)}</option>`).join("")}</select>
+      </div>
+      <div class="draws">${draws.join("")}</div>
+      <div class="row" style="margin-top:12px">${controls.join("")}</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>Entries <span class="bigstat">${active.length - missing.length}</span><span class="muted"> / ${active.length}</span></h2>
+        <div class="row"><select id="enterFor"><option value="">+ Enter allocation for…</option>
+          ${missing.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select></div>
+      </div>
+      ${missing.length ? `<div class="missing" style="margin-bottom:10px"><b style="font-size:13px">Still missing:</b> ${missing.map((t) => `<span>${esc(t.name)}</span>`).join("")}</div>` : `<div class="muted" style="margin-bottom:10px">✓ Every active team has an entry.</div>`}
+      ${entries.length ? `<div style="overflow-x:auto"><table class="t"><thead><tr><th title="Rank within this round only">Round rank</th><th>Team</th>${[1, 2, 3, 4, 5].map((f) => `<th class="n">F${f}</th>`).join("")}
+        ${r.mode === "capital" ? "<th class='n'>Cap</th>" : ""}${hasSab ? "<th class='n'>Sab</th>" : ""}${hasTp ? "<th class='n' title='Random Teleportation swap'>Swap</th>" : ""}<th class="n">W-T-L</th><th class="n">Round pts</th><th>By</th><th></th></tr></thead><tbody>
+        ${entries.map(([tid, e]) => {
+          const x = byTeam[tid] || {};
+          const bad = r.invalid[tid];
+          return `<tr><td>${x.rank || ""}</td><td><b>${esc(teamName(s, tid))}</b>${bad ? `<div class="l" style="font-size:12px">⚠ ${esc(bad)}</div>` : ""}</td>
+            ${e.alloc.map((v) => `<td class="n ${bad ? "bad" : ""}">${v}</td>`).join("")}
+            ${r.mode === "capital" ? `<td class="n">${e.capital || "–"}</td>` : ""}
+            ${hasSab ? `<td class="n">${e.sabotage || "–"}</td>` : ""}
+            ${hasTp ? `<td class="n" style="white-space:nowrap">${swaps[tid] ? `F${swaps[tid][0]}⇄F${swaps[tid][1]}` : "–"}</td>` : ""}
+            <td class="n">${x.wins ?? ""}-${x.ties ?? ""}-${x.losses ?? ""}</td><td class="n"><b>${x.points ?? ""}</b></td>
+            <td class="muted" style="font-size:12px">${esc(e.enteredBy || "")}</td>
+            <td style="white-space:nowrap"><button class="ghost" data-edit="${tid}">Edit</button><button class="ghost" data-act="submission.delete" data-round-id="${r.id}" data-team-id="${tid}" data-confirm="Delete ${esc(teamName(s, tid))}'s entry for this round?">✕</button></td></tr>`;
+        }).join("")}</tbody></table></div>` : `<div class="muted">No entries yet. Hosts enter paper sheets at <span class="url">${location.origin}/entry</span></div>`}
+    </div>
+
+    ${res && res.participants > 1 ? `<div class="card"><h2>Results preview <span class="muted" style="font-size:14px;font-family:var(--font)">(only you see this until you reveal)</span></h2>
+      <div class="grid2"><div>${SMT.fieldChart(res.stats, { values: res.values, notes: res.notes })}</div>
+      <div><table class="t"><thead><tr><th>Field</th><th class="n">Worth</th><th class="n">Mean</th><th class="n">Median</th><th class="n">Min</th><th class="n">Max</th></tr></thead><tbody>
+        ${res.stats.map((st, i) => `<tr><td>Field ${st.field} ${SMT.fieldNoteIcons(res.notes[String(i + 1)])}</td><td class="n">${res.values[i]}</td><td class="n">${st.mean}</td><td class="n">${st.median}</td><td class="n">${st.min}</td><td class="n">${st.max}</td></tr>`).join("")}
+      </tbody></table></div></div>
+      <details id="mx" ${matrixOpen ? "open" : ""} style="margin-top:12px"><summary>Head-to-head matrix (row team vs column team)</summary>${matrix(s, r)}</details></div>` : ""}`;
+
+  document.getElementById("liveSel").onchange = (e) => { liveRoundId = e.target.value; render(SMT.state); };
+  document.getElementById("enterFor").onchange = (e) => {
+    const tid = e.target.value;
+    e.target.value = "";
+    if (tid) editEntry(r.id, tid);
+  };
+  box.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editEntry(r.id, b.dataset.edit)));
+  const mx = document.getElementById("mx");
+  if (mx) mx.ontoggle = () => (matrixOpen = mx.open);
+
+  side.innerHTML = `<h3>Timer</h3>
+    <div class="clock" id="adminClock">${SMT.clock(SMT.timeLeft(r.timer))}</div>
+    <div class="muted" id="clockLbl" style="margin-bottom:10px"></div>
+    <div class="row">
+      ${r.timer.startedAt ? `<button data-act="timer" data-op="pause" data-id="${r.id}">⏸ Pause</button>` : `<button class="primary" data-act="timer" data-op="start" data-id="${r.id}">▶ Start</button>`}
+      <button data-act="timer" data-op="add" data-seconds="60" data-id="${r.id}">+1 min</button>
+      <button data-act="timer" data-op="add" data-seconds="-30" data-id="${r.id}">−30s</button>
+      <button class="ghost" data-act="timer" data-op="reset" data-id="${r.id}">Reset</button>
+    </div>`;
+  tickClock();
+}
+
+function tickClock() {
+  const el = document.getElementById("adminClock");
+  const s = SMT.state;
+  if (!el || !s) return;
+  const r = liveRound(s);
+  if (!r) return;
+  const left = SMT.timeLeft(r.timer);
+  el.textContent = SMT.clock(left);
+  el.classList.toggle("low", left <= 30);
+  document.getElementById("clockLbl").textContent = left <= 0 ? "Time's up" : r.timer.startedAt ? "Running" : "Paused";
+}
+
+function matrix(s, r) {
+  const st = r.results.standings;
+  const M = r.results.matrix;
+  return `<div class="matrix"><table><thead><tr><th></th>${st.map((x) => `<th class="rot">${esc(x.name)}</th>`).join("")}</tr></thead><tbody>
+    ${st.map((a) => `<tr><th style="text-align:left">${esc(a.name)}</th>${st.map((b) => {
+      if (a.teamId === b.teamId) return "<td>—</td>";
+      const m = M[a.teamId][b.teamId];
+      return `<td class="${m.r}" title="${esc(a.name)} vs ${esc(b.name)}: ${m.for}–${m.against}${m.reason !== "points" ? " (" + m.reason + ")" : ""}">${m.r} ${m.for}–${m.against}${m.reason === "capital" ? "🏰" : ""}</td>`;
+    }).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+function editEntry(roundId, teamId) {
+  const s = SMT.state;
+  const r = s.rounds.find((x) => x.id === roundId);
+  const team = s.teams.find((t) => t.id === teamId);
+  document.getElementById("dlgTitle").textContent = `Round ${r.number} entry`;
+  dlg.showModal();
+  SMT.allocForm(document.getElementById("dlgBody"), {
+    round: r, team, existing: r.submissions[teamId], admin: true, enteredBy: "organizer",
+    onDone: () => dlg.close(), onCancel: () => dlg.close(),
+  });
+}
+
+/* ---------------- rounds ---------------- */
+function renderRounds(s) {
+  document.getElementById("rounds").innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>Rounds (${s.rounds.length})</h2>
+        <div class="row"><button class="primary" id="newRound">+ New round</button>
+          <button data-act="schedule" data-kind="lightning" data-ok="Added 3 lightning rounds">⚡ Add lightning series (3×)</button>
+          <button data-act="schedule" data-kind="suggested" data-ok="Added the suggested 15-round schedule" ${s.rounds.length ? `data-confirm="Append the suggested 15 rounds after your existing ${s.rounds.length}?"` : ""}>📋 Add suggested schedule</button></div></div>
+      ${s.rounds.length ? `<div style="overflow-x:auto"><table class="t"><thead><tr><th>#</th><th>Round</th><th>Mode</th><th>Events</th><th class="n">Budget</th><th class="n">Time</th><th>Status</th><th class="n">Entries</th><th></th></tr></thead><tbody>
+      ${s.rounds.map((r, i) => `<tr class="${r.status === "draft" ? "" : "dim2"}"><td>${r.number}</td><td><b>${esc(r.title)}</b>${r.tag ? `<div class="muted" style="font-size:12px">${esc(r.tag)}</div>` : ""}</td>
+        <td>${modeName(s, r)}</td><td style="font-size:13px">${esc(evNames(s, r)) || "—"}</td><td class="n">${r.budget}</td><td class="n">${SMT.clock(r.timer.duration)}</td>
+        <td>${pill(r)}${s.currentRoundId === r.id ? ' <span class="pill">current</span>' : ""}</td><td class="n">${Object.keys(r.submissions).length}</td>
+        <td style="white-space:nowrap">
+          <button class="ghost" data-act="round.move" data-id="${r.id}" data-dir="up" ${i === 0 ? "disabled" : ""}>▲</button><button class="ghost" data-act="round.move" data-id="${r.id}" data-dir="down" ${i === s.rounds.length - 1 ? "disabled" : ""}>▼</button>
+          <button data-editround="${r.id}">Edit</button>
+          ${r.status === "draft" ? `<button class="primary" data-act="round.open" data-id="${r.id}" data-ok="Round ${r.number} is open">Open</button>` : `<button data-live="${r.id}">Manage</button>`}
+          <button class="ghost" data-act="round.delete" data-id="${r.id}" data-confirm="Delete Round ${r.number} (${esc(r.title)})${Object.keys(r.submissions).length ? " and its " + Object.keys(r.submissions).length + " entries" : ""}?">✕</button></td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="muted">No rounds yet. Click <b>Add suggested schedule</b> for Classic, Weighted and Capital warm-ups plus 12 special-event rounds (3 minutes each), then tweak.</p>`}
+    </div>
+    <div class="card"><h3>Modes & event cards</h3><div class="grid2">
+      <div>${Object.entries(s.meta.modes).map(([k, m]) => `<p><b>${m.name}</b>: ${esc(m.rule)}</p>`).join("")}</div>
+      <div>${Object.entries(s.meta.events).map(([k, e]) => `<p>${e.icon} <b>${e.name}</b>: ${esc(e.text)}</p>`).join("")}</div></div>
+      <p class="muted" style="font-size:13px">Events stack with any mode. Win a matchup: +${s.meta.points.win} · tie: +${s.meta.points.tie} · loss: ${s.meta.points.loss}.</p></div>`;
+  document.getElementById("newRound").onclick = () => roundEditor(null);
+  document.querySelectorAll("[data-editround]").forEach((b) => (b.onclick = () => roundEditor(b.dataset.editround)));
+  document.querySelectorAll("[data-live]").forEach((b) => (b.onclick = () => { liveRoundId = b.dataset.live; tab = "live"; render(SMT.state); }));
+}
+
+function roundEditor(id) {
+  const s = SMT.state;
+  const r = id ? s.rounds.find((x) => x.id === id) : { title: "", tag: "", mode: "classic", events: [], budget: 100, timer: { duration: 180 }, crownHidden: true, notes: "" };
+  const hasSubs = id && Object.keys(r.submissions).length;
+  document.getElementById("dlgTitle").textContent = id ? `Edit Round ${r.number}` : "New round";
+  const body = document.getElementById("dlgBody");
+  body.innerHTML = `
+    <div class="form-grid">
+      <label class="field full">Title <input id="fTitle" value="${esc(r.title)}" placeholder="Leave blank to auto-name from mode + events"></label>
+      <label class="field">Mode <select id="fMode">${Object.entries(s.meta.modes).map(([k, m]) => `<option value="${k}" ${r.mode === k ? "selected" : ""}>${m.name}</option>`).join("")}</select></label>
+      <label class="field">Tag (optional) <input id="fTag" value="${esc(r.tag)}" placeholder="e.g. ⚡ Lightning 1/3"></label>
+      <div class="full muted" id="fRule" style="font-size:14px"></div>
+      <div class="full"><div class="field" style="font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px">Special event cards</div>
+        <div class="evgrid">${Object.entries(s.meta.events).map(([k, e]) => `<label class="check"><input type="checkbox" value="${k}" ${r.events.includes(k) ? "checked" : ""}><span><b>${e.icon} ${e.name}</b><br><small>${esc(e.text)}</small></span></label>`).join("")}</div></div>
+      <label class="check full" id="fCrownWrap"><input type="checkbox" id="fCrownHidden" ${r.crownHidden ? "checked" : ""}><span>Keep the Hidden Treasure field secret until results (untick to announce it on the projector)</span></label>
+      <label class="field">Soldier budget <input id="fBudget" type="number" min="1" value="${r.budget}"></label>
+      <label class="field">Round time (minutes) <input id="fDur" type="number" min="0.25" step="0.25" value="${r.timer.duration / 60}"></label>
+      <label class="field full">Announcement shown on projector (optional) <input id="fNotes" value="${esc(r.notes || "")}" placeholder="e.g. Last round's winners can't use the same split!"></label>
+    </div>
+    ${hasSubs ? `<div class="conflict">This round already has entries. Changing the budget or mode may make some entries invalid; they'll be flagged on the Live tab.</div>` : ""}
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button onclick="dlg.close()">Cancel</button><button class="primary" id="fSave">${id ? "Save changes" : "Create round"}</button></div>`;
+  const $ = (q) => body.querySelector(q);
+  let budgetTouched = !!id;
+  const sync = () => {
+    $("#fRule").textContent = s.meta.modes[$("#fMode").value].rule;
+    const evs = [...body.querySelectorAll(".evgrid input:checked")].map((x) => x.value);
+    $("#fCrownWrap").style.display = evs.includes("crown") ? "" : "none";
+    if (!budgetTouched) $("#fBudget").value = evs.includes("supply") ? 40 : 100;
+  };
+  $("#fBudget").oninput = () => (budgetTouched = true);
+  body.querySelectorAll(".evgrid input, #fMode").forEach((x) => (x.onchange = () => {
+    if (x.value === "supply") budgetTouched = false;
+    sync();
+  }));
+  sync();
+  $("#fSave").onclick = async () => {
+    const config = {
+      title: $("#fTitle").value, tag: $("#fTag").value, mode: $("#fMode").value,
+      events: [...body.querySelectorAll(".evgrid input:checked")].map((x) => x.value),
+      budget: Number($("#fBudget").value), duration: Math.round(Number($("#fDur").value) * 60),
+      crownHidden: $("#fCrownHidden").checked, notes: $("#fNotes").value,
+    };
+    try {
+      await SMT.act(id ? "round.update" : "round.create", id ? { id, config } : { config });
+      dlg.close();
+      SMT.toast(id ? "Round updated" : "Round created", "ok");
+    } catch (e) { SMT.toast(e.message, "err"); }
+  };
+  dlg.showModal();
+}
+
+/* ---------------- teams ---------------- */
+function renderTeams(s) {
+  const ov = Object.fromEntries(s.overall.map((o) => [o.teamId, o]));
+  const box = document.getElementById("teams");
+  const active = s.teams.filter((t) => t.active).length;
+  box.innerHTML = `<div class="card"><h2>Teams <span class="muted" style="font-family:var(--font);font-size:15px">${active} active${s.teams.length - active ? ` · ${s.teams.length - active} withdrawn` : ""}</span></h2>
+    ${s.teams.length ? `<table class="t"><thead><tr><th>Team</th><th class="n">Rounds</th><th class="n">Points</th><th></th></tr></thead><tbody>
+    ${[...s.teams].sort((a, b) => a.name.localeCompare(b.name)).map((t) => {
+      const o = ov[t.id];
+      return `<tr class="${t.active ? "" : "dim"}"><td><b>${esc(t.name)}</b>${t.active ? "" : ' <span class="pill locked">withdrawn</span>'}</td>
+        <td class="n">${o ? o.roundsPlayed : "–"}</td><td class="n">${o ? o.points : "–"}</td>
+        <td style="white-space:nowrap;text-align:right"><button class="ghost" data-rename="${t.id}">Rename</button>
+        ${t.active ? `<button class="ghost" data-act="team.withdraw" data-id="${t.id}" data-confirm="Withdraw ${esc(t.name)}? They stop appearing in standings and entry lists, but past matchups still count for their opponents.">Withdraw</button>`
+          : `<button class="ghost" data-act="team.restore" data-id="${t.id}">Restore</button>`}
+        <button class="ghost" data-act="team.delete" data-id="${t.id}" data-confirm="Permanently delete ${esc(t.name)} and all their entries? Every round is re-scored as if they never played.">✕</button></td></tr>`;
+    }).join("")}</tbody></table>` : `<p class="muted">No teams yet. Type names on the left, one per line.</p>`}</div>`;
+  box.querySelectorAll("[data-rename]").forEach((b) => (b.onclick = async () => {
+    const t = s.teams.find((x) => x.id === b.dataset.rename);
+    const name = prompt("New team name", t.name);
+    if (!name || name === t.name) return;
+    try { await SMT.act("team.rename", { id: t.id, name }); } catch (e) { SMT.toast(e.message, "err"); }
+  }));
+}
+
+/* ---------------- standings ---------------- */
+function renderStandings(s) {
+  const scored = s.rounds.filter((r) => r.results);
+  const per = Object.fromEntries(scored.map((r) => [r.id, Object.fromEntries(r.results.standings.map((x) => [x.teamId, x]))]));
+  const pub = Object.fromEntries(s.overallPublic.map((o) => [o.teamId, o]));
+  document.getElementById("standings").innerHTML = `<div class="card">
+    <h2>Overall standings</h2>
+    <p class="muted" style="margin-top:0">Includes every opened round, even ones not revealed yet. "Public" is what the projector's overall leaderboard shows next to each round's results (revealed rounds only).</p>
+    <div style="overflow-x:auto"><table class="t"><thead><tr><th>#</th><th>Team</th><th class="n">Total</th><th class="n">Public</th><th class="n">W-T-L</th>
+      ${scored.map((r) => `<th class="n" title="${esc(r.title)}">R${r.number}${r.revealed ? "" : "*"}</th>`).join("")}</tr></thead><tbody>
+      ${s.overall.map((o) => `<tr><td>${o.rank}</td><td><b>${esc(o.name)}</b></td><td class="n"><b>${o.points}</b></td><td class="n muted">${pub[o.teamId] ? pub[o.teamId].points : 0}</td>
+        <td class="n">${o.wins}-${o.ties}-${o.losses}</td>
+        ${scored.map((r) => { const x = per[r.id][o.teamId]; return `<td class="n">${x ? x.points : "<span class='muted'>–</span>"}</td>`; }).join("")}</tr>`).join("")}
+    </tbody></table></div>
+    ${scored.some((r) => !r.revealed) ? `<p class="muted" style="font-size:13px">* not yet revealed</p>` : ""}</div>`;
+}
+
+/* ---------------- setup & data ---------------- */
+function renderData(s) {
+  const pin = encodeURIComponent(SMT.store.get("smt-pin") || "");
+  document.getElementById("data").innerHTML = `
+    <div class="grid2">
+      <div class="card"><h2>Device links</h2>
+        <p><b>Projector</b> (no PIN): <span class="url">${location.origin}/display</span></p>
+        <p><b>Host entry</b> (phones/laptops, PIN): <span class="url">${location.origin}/entry</span></p>
+        <p><b>Organizer</b> (PIN): <span class="url">${location.origin}/admin</span></p>
+        <p><b>Paper team sheets</b>: <a href="/sheet" target="_blank">print one per team ↗</a></p>
+        <p class="muted" style="font-size:13px">Every device must be on the same Wi-Fi as the laptop running the server (or use a hosted deploy; see README). If the address says <i>localhost</i>, use the IP address the server printed in the terminal instead.</p></div>
+      <div class="card"><h2>Tournament</h2>
+        <div class="row"><input id="tn" value="${esc(s.tournament.name)}" style="flex:1"><button id="tnSave">Rename</button></div>
+        <h3 style="margin-top:18px">Backups</h3>
+        <div class="row"><a class="btn" href="/api/export.csv?pin=${pin}">⬇ Spreadsheet (CSV)</a><a class="btn" href="/api/export.json?pin=${pin}">⬇ Full backup (JSON)</a>
+          <label class="btn">⬆ Restore backup<input type="file" id="imp" accept=".json,application/json" hidden></label></div>
+        <p class="muted" style="font-size:13px">The server also auto-saves to <code>data/state.json</code> after every change.</p>
+        <h3 style="margin-top:18px">Start over</h3>
+        <label class="check"><input type="checkbox" id="keep" checked> Keep the current team list</label>
+        <div class="row" style="margin-top:8px"><button class="danger" id="newT">New tournament…</button></div></div>
+    </div>`;
+  document.getElementById("tnSave").onclick = () => SMT.act("tournament.rename", { name: document.getElementById("tn").value }).then(() => SMT.toast("Renamed", "ok"));
+  document.getElementById("newT").onclick = async () => {
+    const keep = document.getElementById("keep").checked;
+    const word = prompt(`This erases all rounds and scores${keep ? "" : " and teams"}. Download a backup first!\n\nType NEW to confirm.`);
+    if ((word || "").trim().toUpperCase() !== "NEW") return;
+    const name = prompt("Name for the new tournament", "SM3 Field Wars") || "SM3 Field Wars";
+    await SMT.act("tournament.new", { name, keepTeams: keep });
+    SMT.toast("New tournament started", "ok");
+  };
+  document.getElementById("imp").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (!f || !confirm(`Replace everything with the contents of ${f.name}?`)) return;
+    try {
+      await SMT.act("state.import", { state: JSON.parse(await f.text()) });
+      SMT.toast("Backup restored", "ok");
+    } catch (err) { SMT.toast(err.message, "err"); }
+  };
+}
+</script>
+</body>
+</html>

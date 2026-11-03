@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SM3 Field Wars · Team Sheets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700;900&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { background: #fff; }
+  .controls { max-width: 8.5in; margin: 16px auto; }
+  .controls .row { margin-top: 8px; }
+  .page { width: 8.5in; height: 11in; margin: 0 auto 24px; padding: .45in .5in; display: flex; flex-direction: column; gap: .14in; page-break-after: always; break-after: page; box-shadow: 0 0 0 1px var(--line); }
+  .head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid var(--cardinal); padding-bottom: .08in; }
+  .head .brand { font-family: var(--serif); color: var(--cardinal); font-size: 24px; font-weight: 700; }
+  .head .brand small { display: block; font-family: var(--font); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .team { display: flex; align-items: flex-end; gap: 10px; font-weight: 700; font-size: 15px; }
+  .team span { display: inline-block; min-width: 3.4in; border-bottom: 1.5px solid var(--ink); font-family: var(--serif); font-size: 22px; padding: 0 4px 1px; min-height: 30px; }
+  .how { background: var(--sand-light); border-radius: 8px; padding: .08in .14in; font-size: 12px; line-height: 1.45; }
+  .how b { color: var(--cardinal); }
+  table.sheet { width: 100%; border-collapse: collapse; flex: 1; }
+  table.sheet th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; background: var(--cardinal); color: #fff; padding: 5px 4px; border: 1.5px solid var(--cardinal); }
+  table.sheet td { border: 1.5px solid var(--ink); text-align: center; font-size: 11px; color: var(--muted); }
+  table.sheet td.rn { font-weight: 900; font-size: 17px; color: var(--ink); width: .5in; }
+  table.sheet td.nm { text-align: left; padding: 0 6px; font-size: 10.5px; width: 1.7in; color: var(--ink); line-height: 1.2; }
+  table.sheet td.nm small { display: block; color: var(--cardinal); font-weight: 700; font-size: 9.5px; }
+  table.sheet td.tot { background: var(--sand-light); }
+  table.sheet td.cap { width: .62in; }
+  table.sheet td.ok { width: .55in; background: #F4F4F4; }
+  .foot { font-size: 11px; color: var(--muted); text-align: center; }
+  @media print {
+    .controls { display: none; }
+    .page { margin: 0; box-shadow: none; }
+    @page { size: letter; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="controls card">
+  <h2>Team sheets</h2>
+  <div class="muted">One sheet per team for the whole event. Each round, the team fills in a row, brings the sheet to a host, the host types it in on <b>/entry</b>, initials the last box, and hands it back.</div>
+  <div class="row">
+    <label class="check"><input type="radio" name="mode" value="teams" checked> <span id="teamsLbl">One sheet per registered team, names filled in</span></label>
+    <label class="check"><input type="radio" name="mode" value="blank"> Blank sheets:</label>
+    <input type="number" id="blankN" value="20" min="1" max="200" style="width:80px">
+  </div>
+  <div class="row">
+    <label class="field" style="flex-direction:row;align-items:center;gap:8px">Rows (rounds) <input type="number" id="rows" min="1" max="20" style="width:70px"></label>
+    <label class="check"><input type="checkbox" id="names"> Print round names and rule reminders on each row <small>(shows teams the whole schedule, but never the secret draws)</small></label>
+  </div>
+  <div class="row"><button class="primary" onclick="print()">🖨 Print</button><span class="muted" id="sum"></span></div>
+</div>
+<div id="pages"></div>
+
+<script src="/common.js"></script>
+<script>
+const { esc } = SMT;
+let st = null;
+
+/* Short reminders of the rules that change what a team may write in that row. */
+function rowHints(r) {
+  const h = [];
+  if (r.budget !== 100) h.push(`${r.budget} soldiers`);
+  if (r.events.includes("nomans")) h.push("exactly one field = 0");
+  if (r.events.includes("staircase")) h.push("F1 ≤ F2 ≤ F3 ≤ F4 ≤ F5");
+  if (r.mode === "capital") h.push("write a capital");
+  if (r.events.includes("sabotage")) h.push("write a sabotage field");
+  return h.join(" · ");
+}
+
+function sheet(teamName, rows, rounds, showNames) {
+  const na = "<span style='opacity:.35'>—</span>";
+  const body = Array.from({ length: rows }, (_, i) => {
+    const r = rounds[i];
+    const hints = showNames && r ? rowHints(r) : "";
+    const label = showNames && r ? `${esc(r.title)}${hints ? `<small>${esc(hints)}</small>` : ""}` : "";
+    // With the schedule printed, grey out the boxes a round doesn't use.
+    const capital = showNames && r && r.mode !== "capital" ? na : "";
+    const sabotage = showNames && r && !r.events.includes("sabotage") ? na : "";
+    return `<tr><td class="rn">${i + 1}</td>${showNames ? `<td class="nm">${label}</td>` : ""}
+      <td></td><td></td><td></td><td></td><td></td><td class="tot"></td><td class="cap">${capital}</td><td class="cap">${sabotage}</td><td class="ok"></td></tr>`;
+  }).join("");
+  return `<div class="page">
+    <div class="head"><div class="brand"><small>Stanford Mini Math Meet</small>Field Wars</div>
+      <div class="team">Team <span>${esc(teamName || "")}</span></div></div>
+    <div class="how">Each round, split your soldiers across Fields 1–5 and write them in that round's row.
+      Each row must add up to <b>exactly 100</b> (unless the round announces a different budget, like Supply Shortage = 40).
+      In <b>Capital</b> rounds, write your capital field number (1–5) in the Capital box.
+      In the <b>Sabotage</b> round, write the field you want to sabotage in the Sabotage box.
+      Watch the screen for event rules like <b>No Man's Land</b> (exactly one field is 0) and <b>Staircase</b> (Field 1 ≤ Field 2 ≤ … ≤ Field 5).
+      You have <b>3 minutes</b> per round: bring this sheet to a host before time runs out. They'll enter it, initial it, and hand it back.</div>
+    <table class="sheet"><thead><tr><th>Round</th>${showNames ? "<th>Round name</th>" : ""}
+      <th>Field 1</th><th>Field 2</th><th>Field 3</th><th>Field 4</th><th>Field 5</th><th>Total</th><th>Capital</th><th>Sabotage</th><th>Host ✓</th></tr></thead>
+      <tbody>${body}</tbody></table>
+    <div class="foot">Keep this sheet all event. Don't let other teams see it!</div>
+  </div>`;
+}
+
+function draw() {
+  const teams = st ? st.teams.filter((t) => t.active) : [];
+  const rounds = st && st.role === "admin" ? st.rounds : [];
+  const mode = document.querySelector("input[name=mode]:checked").value;
+  const rows = Math.max(1, Math.min(20, Number(document.getElementById("rows").value) || 15));
+  const showNames = document.getElementById("names").checked && rounds.length > 0;
+  const names = mode === "teams" && teams.length ? teams.map((t) => t.name) : Array(Math.max(1, Number(document.getElementById("blankN").value) || 1)).fill("");
+  document.getElementById("pages").innerHTML = names.map((n) => sheet(n, rows, rounds, showNames)).join("");
+  document.getElementById("sum").textContent = `${names.length} page${names.length === 1 ? "" : "s"} · ${rows} rounds each`;
+}
+
+(async () => {
+  try { await SMT.refresh(); st = SMT.state; } catch (e) { st = null; }
+  const teams = st ? st.teams.filter((t) => t.active) : [];
+  const roundCount = st ? (st.role === "admin" ? st.rounds.length : st.totalRounds) : 0;
+  document.getElementById("rows").value = roundCount || 15;
+  document.getElementById("teamsLbl").textContent = teams.length
+    ? `One sheet per registered team (${teams.length}), names filled in` : "One sheet per registered team (no teams added yet)";
+  if (!teams.length) document.querySelector("input[value=blank]").checked = true;
+  if (!st || st.role !== "admin") {
+    document.getElementById("names").disabled = true;
+    document.getElementById("names").parentElement.title = "Sign in on /admin in this browser to print round names";
+  }
+  document.querySelectorAll(".controls input").forEach((el) => (el.oninput = el.onchange = draw));
+  draw();
+})();
+</script>
+</body>
+</html>
